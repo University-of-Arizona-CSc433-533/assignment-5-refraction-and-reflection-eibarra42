@@ -31,6 +31,16 @@ var imageData;//The image contents are stored separately here
 var scene;//The code can save multiple scenes but no HTML element is made to give user option of switching scenes without selecting file agail. By default the firt scene is shown and the other selected scenes are just stored.
 var objParsed;
 
+let cubemap_pngs = [];
+let cubemap_program;
+
+let cubemap_texid;
+let cubemap_position_buffer;
+let cubemap_index_buffer;
+let time_wave_start;
+let should_record_start = true;
+let rr;
+
 // Mirror camera position
 var cameraPositionPrime;
 
@@ -38,6 +48,13 @@ var billboardProgram;
 var waterHeight=0.5;
 
 var wh = document.getElementById('whID');//Slider for water height
+var rrE = document.getElementById('rrID');//Slider for water height
+
+document.addEventListener("keydown", (ev) => {
+	if (ev.key === 'd') {
+		should_record_start = true;
+	}
+});
 
 wh.addEventListener("input", function(evt) {
 	if(doneLoading==true){
@@ -45,6 +62,15 @@ wh.addEventListener("input", function(evt) {
 		var wZLabel = document.getElementById("whLabelID");
 		wZLabel.innerHTML = wh.value;
 		wh.label = "Water height: "+wh.value;//refresh wh text
+	}
+},false);
+
+rrE.addEventListener("input", function(evt) {
+	if (doneLoading) {
+		rr = Number(rrE.value);
+		let rrLabel = document.getElementById("rrLabelID");
+		rrLabel.innerHTML = rr;
+		rrE.label = "Refraction/Reflectance: " + rr;
 	}
 },false);
 
@@ -103,6 +129,12 @@ function readScene()//This is the function that is called after user selects mul
 							if (err) throw err;
 							
 							let img = parsePNG(png,fileName);
+
+							if (fileName.startsWith("cubemap")) {
+								cubemap_pngs.push(img);
+								filesToRead[index]=false;
+								return;
+							}
 							
 							let width=img.width;
 							let height=img.height;
@@ -185,8 +217,47 @@ function renderingFcn(now){
 	
 	// Clear the canvas AND the depth buffer.
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-	
+
+	if (Math.abs(Math.abs(currentScene.camera.position.y) - 11.99) < 0.01) {
+		console.log(currentScene.camera.position.y);
+	}
+
+	if (should_record_start) {
+		time_wave_start = now;
+		should_record_start = false;
+	}
+
+	renderCubemap(now);
 	renderBillboard(now);
+}
+
+function renderCubemap(now) {
+	gl.useProgram(cubemap_program.program);
+	gl.activeTexture(gl.TEXTURE0);
+	gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap_texid);
+
+	gl.enableVertexAttribArray(cubemap_program.position);
+
+	gl.bindBuffer(gl.ARRAY_BUFFER, cubemap_position_buffer);
+	gl.vertexAttribPointer(cubemap_program.position, 3, gl.FLOAT, false, 0, 0);
+
+	var cameraMatrix;
+	// Compute the camera's matrix using look at.
+	cameraMatrix = m4.lookAt([currentScene.camera.position.x,currentScene.camera.position.y,currentScene.camera.position.z], [currentScene.camera.target.x,currentScene.camera.target.y,currentScene.camera.target.z], [currentScene.camera.up.x,currentScene.camera.up.y,currentScene.camera.up.z]);
+
+	// Make a view matrix from the camera matrix.
+	var viewMatrix = m4.inverse(cameraMatrix);
+
+	var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+	var projectionMatrix =
+		m4.perspective(degToRad(currentScene.camera.fov), aspect, currentScene.camera.near, 1000);
+	var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+
+	gl.uniformMatrix4fv(cubemap_program.viewProj, false, viewProjectionMatrix);
+	gl.uniform1i(cubemap_program.skybox_texture, 0);
+
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubemap_index_buffer);
+	gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_BYTE, 0);
 }
 
 function renderBillboard(now){
@@ -194,6 +265,9 @@ function renderBillboard(now){
 	
 	// Tell it to use our program (pair of shaders)
     gl.useProgram(billboardProgram.program);
+
+	gl.activeTexture(gl.TEXTURE0);
+	gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap_texid);
 	
     // Turn on the position attribute
     gl.enableVertexAttribArray(billboardProgram.positionLocationAttrib);
@@ -227,11 +301,11 @@ function renderBillboard(now){
 		
 	
 	// Turn on the normal attribute
-    gl.enableVertexAttribArray(billboardProgram.textureLocationAttrib);
+    gl.enableVertexAttribArray(billboardProgram.texcoordLocationAttrib);
 
     // Bind the normal buffer.
     gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.textureBuffer);
-	
+
 	// Tell the normal attribute how to get data out of normalBuffer (ARRAY_BUFFER)
     var size = 2;          // 3 components per iteration
     var type = gl.FLOAT;   // the data is 32bit floats
@@ -239,7 +313,7 @@ function renderBillboard(now){
     var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next normal
     var offset = 0;        // start at the beginning of the buffer
     gl.vertexAttribPointer(
-        billboardProgram.textureLocationAttrib, size, type, normalize, stride, offset);
+        billboardProgram.texcoordLocationAttrib, size, type, normalize, stride, offset);
 	
     // Compute the projection matrix
     var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
@@ -263,19 +337,98 @@ function renderBillboard(now){
 	
 	// Send the light direction to the uniform.
 	gl.uniform3fv(billboardProgram.lightDirectionUniformLocation, new Float32Array([currentScene.light.locationPoint.x,currentScene.light.locationPoint.y,currentScene.light.locationPoint.z]));
-	
+	gl.uniform3fv(billboardProgram.camposUniformLocation, new Float32Array([currentScene.camera.position.x,currentScene.camera.position.y,currentScene.camera.position.z]));
+	gl.uniform1f(billboardProgram.timeUniformLocation, now / 1000.0);
+	gl.uniform1f(billboardProgram.time_start_loc, (time_wave_start / 1000.0));
+	gl.uniform1f(billboardProgram.ampUniformLocation, waterHeight);
+	gl.uniform1f(billboardProgram.rr_loc, rr);
+
 	//TODO: You need to send "time" and "water height" to the shader program
 	// You can eaither use the uniform location here or you can use your preprocessed uniform location in the program.
-	
+
 	gl.drawArrays(gl.TRIANGLES, 0, 6);
 }
 
 function programAll(){
 	programBillboard();
+	cubemap_program = programCubemap();
 }
 
 function preprocessBuffers(){
+	makeCubemapBuffers();
 	makeBillboardBuffers();
+}
+
+function rgba_array(png) {
+	let result = new Uint8Array(png.width * png.height * 4);
+	for (let i = 0; i < png.data.length; i++) {
+		result[i * 4    ] = png.data[i].r;
+		result[i * 4 + 1] = png.data[i].g;
+		result[i * 4 + 2] = png.data[i].b;
+		result[i * 4 + 3] = png.data[i].a;
+	}
+
+	return result;
+}
+
+function makeCubemapBuffers(){
+	cubemap_texid = gl.createTexture();
+	gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap_texid);
+
+	for (let i = 0; i < cubemap_pngs.length; i++) {
+		let png = cubemap_pngs[i];
+		let tex_pos = gl.TEXTURE_CUBE_MAP_NEGATIVE_X;
+		let tex_data = rgba_array(png);
+
+		if (png.fileName.indexOf("negy") !== -1) {
+			tex_pos = gl.TEXTURE_CUBE_MAP_NEGATIVE_Y;
+		} else if (png.fileName.indexOf("negz") !== -1) {
+			tex_pos = gl.TEXTURE_CUBE_MAP_NEGATIVE_Z;
+		} else if (png.fileName.indexOf("posx") !== -1) {
+			tex_pos = gl.TEXTURE_CUBE_MAP_POSITIVE_X;
+		} else if (png.fileName.indexOf("posy") !== -1) {
+			tex_pos = gl.TEXTURE_CUBE_MAP_POSITIVE_Y;
+		} else if (png.fileName.indexOf("posz") !== -1) {
+			tex_pos = gl.TEXTURE_CUBE_MAP_POSITIVE_Z;
+		}
+
+		gl.texImage2D(tex_pos, 0, gl.RGBA, png.width, png.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, tex_data);
+	}
+
+	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+	gl.texParameteri(gl.TEXTURE_CUBE_MAP, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+
+	const SCALE = 100 / 2;
+	let positions = new Float32Array([
+		-SCALE, -SCALE, -SCALE, // 0
+		 SCALE, -SCALE, -SCALE, // 1
+		 SCALE,  SCALE, -SCALE, // 2
+		-SCALE,  SCALE, -SCALE, // 3
+		-SCALE, -SCALE, SCALE,  // 4
+		 SCALE, -SCALE, SCALE,  // 5
+		 SCALE,  SCALE, SCALE,  // 6
+		-SCALE,  SCALE, SCALE,  // 7
+	]);
+
+	let indices = new Uint8Array([
+		0, 1, 2, 0, 2, 3,
+		4, 6, 5, 4, 7, 6,
+		7, 3, 2, 7, 2, 6,
+		4, 1, 0, 4, 5, 1,
+		5, 6, 2, 5, 2, 1,
+		4, 3, 7, 4, 0, 3
+	]);
+
+	cubemap_position_buffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, cubemap_position_buffer);
+	gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+
+	cubemap_index_buffer = gl.createBuffer();
+	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, cubemap_index_buffer);
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
 }
 
 function makeBillboardBuffers(){
@@ -313,61 +466,190 @@ function makeBillboardBuffers(){
     sceneBillboard.setBuffers(billboardPositionBuffer,billboardTextcoordBuffer,billboardNormalBuffer,billboardTextureBuffer);
 }
 
-class BillboardProgram{
-	constructor(program,positionLocationAttrib,normalLocationAttrib,textureLocationAttrib,textureUniformLocation,worldViewProjectionUniformLocation,lightDirectionUniformLocation){
-		this.program=program;
-		this.positionLocationAttrib=positionLocationAttrib;
-		this.normalLocationAttrib=normalLocationAttrib;
-		this.textureLocationAttrib=textureLocationAttrib;
-		this.textureUniformLocation=textureUniformLocation;
-		this.worldViewProjectionUniformLocation=worldViewProjectionUniformLocation;
-		this.lightDirectionUniformLocation=lightDirectionUniformLocation;
+class CubemapProgram {
+	constructor(program, position, viewProj, skybox_texture) {
+		this.program = program;
+		this.position = position;
+		this.viewProj = viewProj;
+		this.skybox_texture = skybox_texture;
 	}
 }
 
+class BillboardProgram{
+	constructor(program, texcoordLocationAttrib,positionLocationAttrib,
+							normalLocationAttrib,ampUniformLocation,camposUniformLocation,
+							textureUniformLocation,worldViewProjectionUniformLocation,
+							lightDirectionUniformLocation,timeUniformLocation, time_start_loc, rr_loc){
+		this.program=program;
+		this.texcoordLocationAttrib = texcoordLocationAttrib;
+		this.positionLocationAttrib=positionLocationAttrib;
+		this.normalLocationAttrib=normalLocationAttrib;
+		this.ampUniformLocation = ampUniformLocation;
+		this.camposUniformLocation=camposUniformLocation;
+		this.textureUniformLocation=textureUniformLocation;
+		this.worldViewProjectionUniformLocation=worldViewProjectionUniformLocation;
+		this.lightDirectionUniformLocation=lightDirectionUniformLocation;
+		this.timeUniformLocation = timeUniformLocation;
+		this.time_start_loc = time_start_loc;
+		this.rr_loc = rr_loc;
+	}
+}
+
+function programCubemap() {
+	let vShaderObj =
+		"attribute vec4 a_position;\n"+
+		"varying vec4 worldPos;\n"+
+		"uniform mat4 viewProjection;\n"+
+		"void main() {\n"+
+		"  worldPos = a_position;\n"+
+		"  gl_Position = viewProjection * a_position;\n"+
+		"}";
+
+	let fShaderObj =
+		"#version 100\n"+
+		"precision mediump float;\n"+
+		"varying vec4 worldPos;\n"+
+		"uniform samplerCube skybox;\n"+
+		"void main() {\n"+
+		"  gl_FragColor = textureCube(skybox, worldPos.xyz);\n"+
+		"}";
+
+	let programCube = webglUtils.createProgramFromSources(gl, [vShaderObj, fShaderObj]);
+
+	let positionAttrib = gl.getAttribLocation(programCube, "a_position");
+
+	let viewProj = gl.getUniformLocation(programCube, "viewProjection");
+	let skybox = gl.getUniformLocation(programCube, "skybox");
+
+	return new CubemapProgram(programCube, positionAttrib, viewProj, skybox);
+}
+
 function programBillboard(){
+	console.log(cubemap_pngs.length);
+
 	//TODO: Change the shader program to calculate Snell's law. This is the major part of this homework.
 	// You need to implement circle logic, calculate the angles, calculate displacement and change the texture coordinate accordingly.
 	// Additionally you need to implement light intensity logic which follows the Snell's law.
 	// You can check if the displaced texture coordinate is outside [0,1] and make the fragments invisible (shows background)
 	// The waves should follow sin and cosin functions in x and z directions. The frequency depends on the time scale passes to the shader program.
-	var vShaderObj = "attribute vec4 a_position;\n"+
-				"attribute vec3 a_normal;\n"+
-				"attribute vec2 a_texcoord;\n"+
-				"varying vec2 v_texcoord;\n"+
-				"varying vec3 v_normal;\n"+
-				"uniform mat4 u_worldViewProjection;\n"+
-				"void main() {\n"+
-					"// Sending the interpolated normal to the fragment shader.\n"+
-					"v_normal = a_normal;\n"+
-					"// Pass the texcoord to the fragment shader.\n"+
-					"v_texcoord = a_texcoord;\n"+
-					"// Multiply the position by the matrix.\n"+
-					"gl_Position = u_worldViewProjection * a_position;\n"+
-				"}";
-	var fShaderObj = 	"precision mediump float;\n"+
-					"varying vec3 v_normal;\n"+
-					"varying vec2 v_texcoord;\n"+
-					"uniform vec3 u_lightDirection;\n"+
-					"uniform sampler2D u_texture;\n"+
-					"void main() {\n"+
-						"gl_FragColor = texture2D(u_texture, v_texcoord);\n"+
-					"}";
-	programBill = webglUtils.createProgramFromSources(gl, [vShaderObj,fShaderObj])
+	var vShaderObj = "attribute vec4 a_position;\n" +
+		"attribute vec3 a_normal;\n" +
+		"attribute vec2 a_texcoord;\n" +
+		"\n" +
+		"varying vec3 v_worldPos;\n" +
+		"varying vec2 v_texcoord;\n" +
+		"varying vec3 v_normal;\n" +
+		"\n" +
+		"uniform mat4 u_worldViewProjection;\n" +
+		"\n" +
+		"void main() {\n" +
+		"    v_worldPos = a_position.xyz;\n" +
+		"    // Sending the interpolated normal to the fragment shader.\n" +
+		"    v_normal = a_normal;\n" +
+		"    // Pass the texcoord to the fragment shader.\n" +
+		"    v_texcoord = a_texcoord;\n" +
+		"    // Multiply the position by the matrix.\n" +
+		"    gl_Position = u_worldViewProjection * a_position;\n" +
+		"}";
+
+	var fShaderObj = "precision mediump float;\n" +
+		"\n" +
+		"varying vec3 v_worldPos;\n" +
+		"varying vec2 v_texcoord;\n" +
+		"varying vec3 v_normal;\n" +
+		"\n" +
+		"uniform vec3 u_campos;\n" +
+		"uniform vec3 u_lightDirection;\n" +
+		"uniform samplerCube env_map;\n" +
+		"\n" +
+		"uniform float u_twave_begin;\n" +
+		"uniform float u_time;\n" +
+		"uniform float u_amp;\n" +
+		"uniform float u_rr;\n" +
+		"\n" +
+		"const float iof_water = 1.33;\n" +
+		"const float discrete = 0.001;\n" +
+		"\n" +
+		"const float lambda = 10.0;\n" +
+		"const float lambda2 = 10.0;\n" +
+		"\n" +
+		"float time() {\n" +
+		"    return u_time - u_twave_begin;\n" +
+		"}\n" +
+		"\n" +
+		"float wave_height(vec2 point) {\n" +
+		"    float n = length(point - vec2(0.5));\n" +
+		"    return u_amp * exp(-lambda2 * (n + time())) * cos(lambda * n + time());\n" +
+		"}\n" +
+		"\n" +
+		"float dwdn(vec2 point) {\n" +
+		"    float n = length(point - vec2(0.5));\n" +
+		"    return -u_amp * lambda * lambda2 * exp(-lambda2 * (n + time())) * sin(lambda * n + time());\n" +
+		"}\n" +
+		"\n" +
+		"vec3 calc_world_pos() {\n" +
+		"    return (wave_height(v_texcoord) * v_normal) + v_worldPos;\n" +
+		"}\n" +
+		"\n" +
+		"vec3 calc_wave_normal() {\n" +
+		"    vec3 dir = normalize(vec3(v_texcoord.x - 0.5, 0.0, v_texcoord.y - 0.5));\n" +
+		"    vec3 tangent = normalize(vec3(dir.x, dwdn(v_texcoord), dir.z));\n" +
+		"    vec3 aug = dot(v_normal, tangent) * tangent;\n" +
+		"\n" +
+		"    return normalize(v_normal - aug);\n" +
+		"}\n" +
+		"\n" +
+		"vec3 snell_law(vec3 incident, vec3 normal, float ratio) {\n" +
+		"    float cos_angle = dot(normal, incident);\n" +
+		"    float sin2_angle = (1.0 - cos_angle * cos_angle);\n" +
+		"    float inv_lhs2 = 1.0 - ratio * ratio * sin2_angle;\n" +
+		"\n" +
+		"    if (inv_lhs2 < 0.0)\n" +
+		"        return vec3(0.0);\n" +
+		"    else\n" +
+		"        return ratio * incident - (ratio * cos_angle + sqrt(inv_lhs2)) * normal;\n" +
+		"}\n" +
+		"\n" +
+		"void main() {\n" +
+		"    vec3 normal = calc_wave_normal();\n" +
+		"    vec3 worldPos = calc_world_pos();\n" +
+		"\n" +
+		"    float lightAmt = dot(u_lightDirection, normal);\n" +
+		"    lightAmt = clamp(lightAmt, 0.1, 1.0);\n" +
+		"    vec3 dirToFragment = normalize(worldPos - u_campos);\n" +
+		"\n" +
+		"    vec3 refractedDir = snell_law(dirToFragment, normal, 1.0 / iof_water);\n" +
+		"    vec3 reflectedDir = reflect(dirToFragment, normal);\n" +
+		"\n" +
+		"    vec4 refract_color = textureCube(env_map, refractedDir);\n" +
+		"    vec4 reflect_color = textureCube(env_map, reflectedDir);\n" +
+		"\n" +
+		"    gl_FragColor = vec4(lightAmt, lightAmt, lightAmt, 1.0) * mix(refract_color, reflect_color, u_rr);\n" +
+		"}";
+
+	let programBill = webglUtils.createProgramFromSources(gl, [vShaderObj, fShaderObj])
 	
 	// look up where the vertex data needs to go.
-    positionLocationAttrib = gl.getAttribLocation(programBill, "a_position");
-	normalLocationAttrib = gl.getAttribLocation(programBill, "a_normal");
-	textureLocationAttrib = gl.getAttribLocation(programBill, "a_texcoord");
+	let positionLocationAttrib = gl.getAttribLocation(programBill, "a_position");
+	let texcoordLocationAttrib = gl.getAttribLocation(programBill, "a_texcoord");
+	let normalLocationAttrib = gl.getAttribLocation(programBill, "a_normal");
 	
 	//Optional TODO: You can preprocess required Uniforms to avoid searching for uniforms when rendering.
 	// lookup uniforms
-    textureUniformLocation = gl.getUniformLocation(programBill, "u_texture");
-	worldViewProjectionUniformLocation = gl.getUniformLocation(programBill, "u_worldViewProjection");
-	lightDirectionUniformLocation = gl.getUniformLocation(programBill, "u_lightDirection");
-	
+	let textureUniformLocation = gl.getUniformLocation(programBill, "env_map");
+	let worldViewProjectionUniformLocation = gl.getUniformLocation(programBill, "u_worldViewProjection");
+	let lightDirectionUniformLocation = gl.getUniformLocation(programBill, "u_lightDirection");
+	let campos_loc = gl.getUniformLocation(programBill, "u_campos");
+	let time_loc = gl.getUniformLocation(programBill, "u_time");
+	let amp_loc = gl.getUniformLocation(programBill, "u_amp");
+	let time_start_loc = gl.getUniformLocation(programBill, "u_twave_begin");
+	let rr_loc = gl.getUniformLocation(programBill, "u_rr");
+
 	//Optional TODO: You can preprocess required Uniforms to avoid searching for uniforms when rendering.
-	billboardProgram=new BillboardProgram(programBill,positionLocationAttrib,normalLocationAttrib,textureLocationAttrib,textureUniformLocation,worldViewProjectionUniformLocation,lightDirectionUniformLocation);
+	billboardProgram=new BillboardProgram(programBill,texcoordLocationAttrib,
+		positionLocationAttrib,normalLocationAttrib, amp_loc,campos_loc,
+		textureUniformLocation,worldViewProjectionUniformLocation,
+		lightDirectionUniformLocation, time_loc, time_start_loc, rr_loc);
 }
 
 //The function for parsing PNG is done for you. The output is a an array of RGBA instances.
@@ -469,9 +751,11 @@ function setBillboardTexcoords(gl,billboard) {
 }
 
 function setBillboardNormals(gl,billboard) {
-  let vec1=Vector3.minusTwoVectors(billboard.UpperLeft,billboard.LowerLeft);
+	// Billboard's Upper left is a really weird number... Should be:
+	let ul = new Vector3(billboard.UpperLeft.x, billboard.UpperLeft.y, billboard.LowerRight.z);
+  let vec1=Vector3.minusTwoVectors(ul,billboard.LowerLeft);
   let vec2=Vector3.minusTwoVectors(billboard.LowerRight,billboard.LowerLeft);
-  var normalVector=Vector3.crossProduct(vec2,vec1);//billboard normal vector
+  var normalVector=Vector3.normalizeVector(Vector3.crossProduct(vec1,vec2));//billboard normal vector
   gl.bufferData(
       gl.ARRAY_BUFFER,
       new Float32Array([	  
@@ -731,6 +1015,7 @@ class Ray{
 function parseScene(file_data)//A simple function to read JSON and put the data inside a scene class and return the read scene
 {
 	var sceneFile = JSON.parse(file_data);
+	rr = sceneFile.rr;
 	let pos=new Vector3(sceneFile.eye[0],sceneFile.eye[1],sceneFile.eye[2]);
 	let lookat=new Vector3(sceneFile.lookat[0],sceneFile.lookat[1],sceneFile.lookat[2]);
 	let up=new Vector3(sceneFile.up[0],sceneFile.up[1],sceneFile.up[2]);
