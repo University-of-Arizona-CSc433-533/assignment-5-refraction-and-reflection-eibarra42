@@ -48,6 +48,7 @@ var billboardProgram;
 var waterHeight=0.5;
 
 var wh = document.getElementById('whID');//Slider for water height
+var lambda = document.getElementById("lambdaID");
 var rrE = document.getElementById('rrID');//Slider for water height
 
 document.addEventListener("keydown", (ev) => {
@@ -62,6 +63,13 @@ wh.addEventListener("input", function(evt) {
 		var wZLabel = document.getElementById("whLabelID");
 		wZLabel.innerHTML = wh.value;
 		wh.label = "Water height: "+wh.value;//refresh wh text
+	}
+},false);
+
+lambda.addEventListener("input", function(evt) {
+	if (doneLoading) {
+		let lLabel = document.getElementById("lambdaLabelID");
+		lLabel.innerHTML = lambda.value;
 	}
 },false);
 
@@ -117,17 +125,17 @@ function readScene()//This is the function that is called after user selects mul
 					{
 						var file_data = this.result;
 						objParsed=parseOBJ(file_data);//Parse obj to almost buffer-ready Float32Array arrays.
-						
+
 						filesToRead[index]=false;
 					}else if(fileExtension=='png')
 					{
 						var file_data = this.result;
-						
+
 						var pngImage = new PNGReader(file_data);
-						
+
 						pngImage.parse(function(err, png){
 							if (err) throw err;
-							
+
 							let img = parsePNG(png,fileName);
 
 							if (fileName.startsWith("cubemap")) {
@@ -135,7 +143,7 @@ function readScene()//This is the function that is called after user selects mul
 								filesToRead[index]=false;
 								return;
 							}
-							
+
 							let width=img.width;
 							let height=img.height;
 							document.getElementById("dummy_canvas").setAttribute("width", img.width);
@@ -148,7 +156,7 @@ function readScene()//This is the function that is called after user selects mul
 								showCaseData.data[i*4+3]=img.data[i].a;
 							}
 							ctx.putImageData(showCaseData, dummy_canvas.width/2 - width/2, dummy_canvas.height/2 - height/2);
-							
+
 							let imageRead=ctx.getImageData(0, 0, dummy_canvas.width, dummy_canvas.height);
 							imageData=imageRead;
 							filesToRead[index]=false;
@@ -164,7 +172,7 @@ function readScene()//This is the function that is called after user selects mul
 			}else if(fileExtension=='png'){
 				reader.readAsArrayBuffer(file);
 			}
-			
+
 		}
 		drawScene();//Enter the drawing loop();
 	}
@@ -186,7 +194,7 @@ function drawScene(now) {
 		{
 			currentScene=scene;
 			currentScene.billboard.img=imageData;
-			
+
 			doneLoading=true;
 		}
 	}else if(doneLoading==true)//If scene is completely read
@@ -195,7 +203,7 @@ function drawScene(now) {
 			programAll();
 			preprocessBuffers();
 			doneProgramming=true;
-			
+
 			// Support for Alpha
 			gl.enable(gl.BLEND)
 			gl.colorMask(true, true, true, true);
@@ -204,7 +212,7 @@ function drawScene(now) {
 			renderingFcn(now);
 		}
 	}
-	
+
 	// Call drawScene again next frame with delay to give user chance of interacting GUI
 	requestAnimationFrame(drawScene);
 }
@@ -212,11 +220,11 @@ function drawScene(now) {
 function renderingFcn(now){
 	gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 	webglUtils.resizeCanvasToDisplaySize(gl.canvas);
-	
+
 	gl.clearColor(currentScene.camera.DefaulColor[0], currentScene.camera.DefaulColor[1], currentScene.camera.DefaulColor[2], 1.0);
-	
+
 	// Clear the canvas AND the depth buffer.
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+	gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
 	if (Math.abs(Math.abs(currentScene.camera.position.y) - 11.99) < 0.01) {
 		console.log(currentScene.camera.position.y);
@@ -262,86 +270,87 @@ function renderCubemap(now) {
 
 function renderBillboard(now){
 	gl.disable(gl.CULL_FACE);
-	
+
 	// Tell it to use our program (pair of shaders)
-    gl.useProgram(billboardProgram.program);
+	gl.useProgram(billboardProgram.program);
 
 	gl.activeTexture(gl.TEXTURE0);
 	gl.bindTexture(gl.TEXTURE_CUBE_MAP, cubemap_texid);
-	
-    // Turn on the position attribute
-    gl.enableVertexAttribArray(billboardProgram.positionLocationAttrib);
 
-    // Bind the position buffer.
-    gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.positionBuffer);
-	
+	// Turn on the position attribute
+	gl.enableVertexAttribArray(billboardProgram.positionLocationAttrib);
+
+	// Bind the position buffer.
+	gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.positionBuffer);
+
 	// Tell the position attribute how to get data out of positionBuffer (ARRAY_BUFFER)
-    var size = 3;          // 3 components per iteration
-    var type = gl.FLOAT;   // the data is 32bit floats
-    var normalize = false; // don't normalize the data
-    var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
-    var offset = 0;        // start at the beginning of the buffer
-    gl.vertexAttribPointer(
-        billboardProgram.positionLocationAttrib, size, type, normalize, stride, offset);
-	
-	// Turn on the normal attribute
-    gl.enableVertexAttribArray(billboardProgram.normalLocationAttrib);
+	var size = 3;          // 3 components per iteration
+	var type = gl.FLOAT;   // the data is 32bit floats
+	var normalize = false; // don't normalize the data
+	var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next position
+	var offset = 0;        // start at the beginning of the buffer
+	gl.vertexAttribPointer(
+		billboardProgram.positionLocationAttrib, size, type, normalize, stride, offset);
 
-    // Bind the normal buffer.
-    gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.normalBuffer);
-	
-	// Tell the normal attribute how to get data out of normalBuffer (ARRAY_BUFFER)
-    var size = 3;          // 3 components per iteration
-    var type = gl.FLOAT;   // the data is 32bit floats
-    var normalize = false; // don't normalize the data
-    var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next normal
-    var offset = 0;        // start at the beginning of the buffer
-    gl.vertexAttribPointer(
-        billboardProgram.normalLocationAttrib, size, type, normalize, stride, offset);
-		
-	
 	// Turn on the normal attribute
-    gl.enableVertexAttribArray(billboardProgram.texcoordLocationAttrib);
+	gl.enableVertexAttribArray(billboardProgram.normalLocationAttrib);
 
-    // Bind the normal buffer.
-    gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.textureBuffer);
+	// Bind the normal buffer.
+	gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.normalBuffer);
 
 	// Tell the normal attribute how to get data out of normalBuffer (ARRAY_BUFFER)
-    var size = 2;          // 3 components per iteration
-    var type = gl.FLOAT;   // the data is 32bit floats
-    var normalize = false; // don't normalize the data
-    var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next normal
-    var offset = 0;        // start at the beginning of the buffer
-    gl.vertexAttribPointer(
-        billboardProgram.texcoordLocationAttrib, size, type, normalize, stride, offset);
-	
-    // Compute the projection matrix
-    var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
-    var projectionMatrix =
-        m4.perspective(degToRad(currentScene.camera.fov), aspect, currentScene.camera.near, currentScene.camera.far);
+	var size = 3;          // 3 components per iteration
+	var type = gl.FLOAT;   // the data is 32bit floats
+	var normalize = false; // don't normalize the data
+	var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next normal
+	var offset = 0;        // start at the beginning of the buffer
+	gl.vertexAttribPointer(
+		billboardProgram.normalLocationAttrib, size, type, normalize, stride, offset);
+
+
+	// Turn on the normal attribute
+	gl.enableVertexAttribArray(billboardProgram.texcoordLocationAttrib);
+
+	// Bind the normal buffer.
+	gl.bindBuffer(gl.ARRAY_BUFFER, currentScene.billboard.textureBuffer);
+
+	// Tell the normal attribute how to get data out of normalBuffer (ARRAY_BUFFER)
+	var size = 2;          // 3 components per iteration
+	var type = gl.FLOAT;   // the data is 32bit floats
+	var normalize = false; // don't normalize the data
+	var stride = 0;        // 0 = move forward size * sizeof(type) each iteration to get the next normal
+	var offset = 0;        // start at the beginning of the buffer
+	gl.vertexAttribPointer(
+		billboardProgram.texcoordLocationAttrib, size, type, normalize, stride, offset);
+
+	// Compute the projection matrix
+	var aspect = gl.canvas.clientWidth / gl.canvas.clientHeight;
+	var projectionMatrix =
+		m4.perspective(degToRad(currentScene.camera.fov), aspect, currentScene.camera.near, currentScene.camera.far);
 
 	var cameraMatrix;
 	// Compute the camera's matrix using look at.
 	cameraMatrix = m4.lookAt([currentScene.camera.position.x,currentScene.camera.position.y,currentScene.camera.position.z], [currentScene.camera.target.x,currentScene.camera.target.y,currentScene.camera.target.z], [currentScene.camera.up.x,currentScene.camera.up.y,currentScene.camera.up.z]);
 
-    // Make a view matrix from the camera matrix.
-    var viewMatrix = m4.inverse(cameraMatrix);
+	// Make a view matrix from the camera matrix.
+	var viewMatrix = m4.inverse(cameraMatrix);
 
-    var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
-	
-    // Set the viewProjectionMatrix.
+	var viewProjectionMatrix = m4.multiply(projectionMatrix, viewMatrix);
+
+	// Set the viewProjectionMatrix.
 	gl.uniformMatrix4fv(billboardProgram.worldViewProjectionUniformLocation, false, viewProjectionMatrix);
-	
+
 	// Tell the shader to use texture unit 0 for u_texture
-    gl.uniform1i(billboardProgram.textureUniformLocation, 0);
-	
+	gl.uniform1i(billboardProgram.textureUniformLocation, 0);
+
 	// Send the light direction to the uniform.
 	gl.uniform3fv(billboardProgram.lightDirectionUniformLocation, new Float32Array([currentScene.light.locationPoint.x,currentScene.light.locationPoint.y,currentScene.light.locationPoint.z]));
 	gl.uniform3fv(billboardProgram.camposUniformLocation, new Float32Array([currentScene.camera.position.x,currentScene.camera.position.y,currentScene.camera.position.z]));
-	gl.uniform1f(billboardProgram.timeUniformLocation, now / 1000.0);
-	gl.uniform1f(billboardProgram.time_start_loc, (time_wave_start / 1000.0));
+	gl.uniform1f(billboardProgram.timeUniformLocation, now / 500.0);
+	gl.uniform1f(billboardProgram.time_start_loc, (time_wave_start / 500.0));
 	gl.uniform1f(billboardProgram.ampUniformLocation, waterHeight);
 	gl.uniform1f(billboardProgram.rr_loc, rr);
+	gl.uniform1f(gl.getUniformLocation(billboardProgram.program, "lambda"), parseFloat(lambda.value));
 
 	//TODO: You need to send "time" and "water height" to the shader program
 	// You can eaither use the uniform location here or you can use your preprocessed uniform location in the program.
@@ -404,12 +413,12 @@ function makeCubemapBuffers(){
 	const SCALE = 100 / 2;
 	let positions = new Float32Array([
 		-SCALE, -SCALE, -SCALE, // 0
-		 SCALE, -SCALE, -SCALE, // 1
-		 SCALE,  SCALE, -SCALE, // 2
+		SCALE, -SCALE, -SCALE, // 1
+		SCALE,  SCALE, -SCALE, // 2
 		-SCALE,  SCALE, -SCALE, // 3
 		-SCALE, -SCALE, SCALE,  // 4
-		 SCALE, -SCALE, SCALE,  // 5
-		 SCALE,  SCALE, SCALE,  // 6
+		SCALE, -SCALE, SCALE,  // 5
+		SCALE,  SCALE, SCALE,  // 6
 		-SCALE,  SCALE, SCALE,  // 7
 	]);
 
@@ -433,37 +442,37 @@ function makeCubemapBuffers(){
 
 function makeBillboardBuffers(){
 	let sceneBillboard=currentScene.billboard;
-	
+
 	// Create a buffer for positions
-    let billboardPositionBuffer = gl.createBuffer();
-    // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
-    gl.bindBuffer(gl.ARRAY_BUFFER, billboardPositionBuffer);
-    // Put the positions in the buffer
-    setBillboardGeometry(gl,sceneBillboard);
-	
-    // provide texture coordinates for the rectangle.
-    let billboardTextcoordBuffer = gl.createBuffer();
-    gl.bindBuffer(gl.ARRAY_BUFFER, billboardTextcoordBuffer);
-    // Set Texcoords.
-    setBillboardTexcoords(gl,sceneBillboard);
-  
-    // Create a buffer to put normals in
-    let billboardNormalBuffer = gl.createBuffer();
-    // Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = normalBuffer)
-    gl.bindBuffer(gl.ARRAY_BUFFER, billboardNormalBuffer);
-    // Put normals data into buffer
-    setBillboardNormals(gl,sceneBillboard);
-	
+	let billboardPositionBuffer = gl.createBuffer();
+	// Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = positionBuffer)
+	gl.bindBuffer(gl.ARRAY_BUFFER, billboardPositionBuffer);
+	// Put the positions in the buffer
+	setBillboardGeometry(gl,sceneBillboard);
+
+	// provide texture coordinates for the rectangle.
+	let billboardTextcoordBuffer = gl.createBuffer();
+	gl.bindBuffer(gl.ARRAY_BUFFER, billboardTextcoordBuffer);
+	// Set Texcoords.
+	setBillboardTexcoords(gl,sceneBillboard);
+
+	// Create a buffer to put normals in
+	let billboardNormalBuffer = gl.createBuffer();
+	// Bind it to ARRAY_BUFFER (think of it as ARRAY_BUFFER = normalBuffer)
+	gl.bindBuffer(gl.ARRAY_BUFFER, billboardNormalBuffer);
+	// Put normals data into buffer
+	setBillboardNormals(gl,sceneBillboard);
+
 	// Create a texture.
 	var billboardTextureBuffer = gl.createTexture();
 	gl.activeTexture(gl.TEXTURE0);
 	gl.bindTexture(gl.TEXTURE_2D, billboardTextureBuffer);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,gl.UNSIGNED_BYTE, imageData);
+	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA,gl.UNSIGNED_BYTE, imageData);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.generateMipmap(gl.TEXTURE_2D);
-  
-    sceneBillboard.setBuffers(billboardPositionBuffer,billboardTextcoordBuffer,billboardNormalBuffer,billboardTextureBuffer);
+	gl.generateMipmap(gl.TEXTURE_2D);
+
+	sceneBillboard.setBuffers(billboardPositionBuffer,billboardTextcoordBuffer,billboardNormalBuffer,billboardTextureBuffer);
 }
 
 class CubemapProgram {
@@ -570,8 +579,8 @@ function programBillboard(){
 		"const float iof_water = 1.33;\n" +
 		"const float discrete = 0.001;\n" +
 		"\n" +
-		"const float lambda = 10.0;\n" +
-		"const float lambda2 = 10.0;\n" +
+		"uniform float lambda;\n" +
+		"const float lambda2 = 0.1;\n" +
 		"\n" +
 		"float time() {\n" +
 		"    return u_time - u_twave_begin;\n" +
@@ -579,12 +588,12 @@ function programBillboard(){
 		"\n" +
 		"float wave_height(vec2 point) {\n" +
 		"    float n = length(point - vec2(0.5));\n" +
-		"    return u_amp * exp(-lambda2 * (n + time())) * cos(lambda * n + time());\n" +
+		"    return u_amp * exp(-lambda2 * (n + time())) * cos(lambda * n - time());\n" +
 		"}\n" +
 		"\n" +
 		"float dwdn(vec2 point) {\n" +
 		"    float n = length(point - vec2(0.5));\n" +
-		"    return -u_amp * lambda * lambda2 * exp(-lambda2 * (n + time())) * sin(lambda * n + time());\n" +
+		"    return -u_amp * lambda * lambda2 * exp(-lambda2 * (n + time())) * sin(lambda * n - time());\n" +
 		"}\n" +
 		"\n" +
 		"vec3 calc_world_pos() {\n" +
@@ -628,12 +637,12 @@ function programBillboard(){
 		"}";
 
 	let programBill = webglUtils.createProgramFromSources(gl, [vShaderObj, fShaderObj])
-	
+
 	// look up where the vertex data needs to go.
 	let positionLocationAttrib = gl.getAttribLocation(programBill, "a_position");
 	let texcoordLocationAttrib = gl.getAttribLocation(programBill, "a_texcoord");
 	let normalLocationAttrib = gl.getAttribLocation(programBill, "a_normal");
-	
+
 	//Optional TODO: You can preprocess required Uniforms to avoid searching for uniforms when rendering.
 	// lookup uniforms
 	let textureUniformLocation = gl.getUniformLocation(programBill, "env_map");
@@ -726,188 +735,188 @@ function setColorBuffer(gl,obj) {
 // Complete this function with counter clock-wise vertices of the billboard. The billboard should be made of two triangles.
 function setBillboardGeometry(gl,billboard) {
 	var positions = new Float32Array([
-	billboard.UpperLeft.x, billboard.UpperLeft.y, billboard.UpperLeft.z,  // first triangle
-    billboard.LowerLeft.x, billboard.LowerLeft.y, billboard.UpperRight.z,
-    billboard.UpperRight.x, billboard.UpperRight.y, billboard.LowerLeft.z,
-    billboard.UpperRight.x,  billboard.UpperRight.y, billboard.LowerLeft.z,  // second triangle
-    billboard.LowerLeft.x,  billboard.LowerLeft.y, billboard.LowerRight.z,
-    billboard.LowerRight.x,  billboard.LowerRight.y, billboard.LowerRight.z
+		billboard.UpperLeft.x, billboard.UpperLeft.y, billboard.UpperLeft.z,  // first triangle
+		billboard.LowerLeft.x, billboard.LowerLeft.y, billboard.UpperRight.z,
+		billboard.UpperRight.x, billboard.UpperRight.y, billboard.LowerLeft.z,
+		billboard.UpperRight.x,  billboard.UpperRight.y, billboard.LowerLeft.z,  // second triangle
+		billboard.LowerLeft.x,  billboard.LowerLeft.y, billboard.LowerRight.z,
+		billboard.LowerRight.x,  billboard.LowerRight.y, billboard.LowerRight.z
 	]);
 	gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
 }
 
 function setBillboardTexcoords(gl,billboard) {
-  gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([	  
-	  0,0,
-	  0,1,
-	  1,0,
-	  1,0,
-	  0,1,
-	  1,1
-	  ]),
-      gl.STATIC_DRAW);
+	gl.bufferData(
+		gl.ARRAY_BUFFER,
+		new Float32Array([
+			0,0,
+			0,1,
+			1,0,
+			1,0,
+			0,1,
+			1,1
+		]),
+		gl.STATIC_DRAW);
 }
 
 function setBillboardNormals(gl,billboard) {
 	// Billboard's Upper left is a really weird number... Should be:
 	let ul = new Vector3(billboard.UpperLeft.x, billboard.UpperLeft.y, billboard.LowerRight.z);
-  let vec1=Vector3.minusTwoVectors(ul,billboard.LowerLeft);
-  let vec2=Vector3.minusTwoVectors(billboard.LowerRight,billboard.LowerLeft);
-  var normalVector=Vector3.normalizeVector(Vector3.crossProduct(vec1,vec2));//billboard normal vector
-  gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([	  
-	  normalVector.x,normalVector.y,normalVector.z,
-	  normalVector.x,normalVector.y,normalVector.z,
-	  normalVector.x,normalVector.y,normalVector.z,
-	  normalVector.x,normalVector.y,normalVector.z,
-	  normalVector.x,normalVector.y,normalVector.z,
-	  normalVector.x,normalVector.y,normalVector.z
-	  ]),
-      gl.STATIC_DRAW);
+	let vec1=Vector3.minusTwoVectors(ul,billboard.LowerLeft);
+	let vec2=Vector3.minusTwoVectors(billboard.LowerRight,billboard.LowerLeft);
+	var normalVector=Vector3.normalizeVector(Vector3.crossProduct(vec1,vec2));//billboard normal vector
+	gl.bufferData(
+		gl.ARRAY_BUFFER,
+		new Float32Array([
+			normalVector.x,normalVector.y,normalVector.z,
+			normalVector.x,normalVector.y,normalVector.z,
+			normalVector.x,normalVector.y,normalVector.z,
+			normalVector.x,normalVector.y,normalVector.z,
+			normalVector.x,normalVector.y,normalVector.z,
+			normalVector.x,normalVector.y,normalVector.z
+		]),
+		gl.STATIC_DRAW);
 }
 
 //This function is given to you for parsing the OBJ file.
 function parseOBJ(text) {
-  // because indices are base 1 let's just fill in the 0th data
-  const objPositions = [[0, 0, 0]];
-  const objTexcoords = [[0, 0]];
-  const objNormals = [[0, 0, 0]];
+	// because indices are base 1 let's just fill in the 0th data
+	const objPositions = [[0, 0, 0]];
+	const objTexcoords = [[0, 0]];
+	const objNormals = [[0, 0, 0]];
 
-  // same order as `f` indices
-  const objVertexData = [
-    objPositions,
-    objTexcoords,
-    objNormals,
-  ];
+	// same order as `f` indices
+	const objVertexData = [
+		objPositions,
+		objTexcoords,
+		objNormals,
+	];
 
-  // same order as `f` indices
-  let webglVertexData = [
-    [],   // positions
-    [],   // texcoords
-    [],   // normals
-  ];
+	// same order as `f` indices
+	let webglVertexData = [
+		[],   // positions
+		[],   // texcoords
+		[],   // normals
+	];
 
-  const materialLibs = [];
-  const geometries = [];
-  let geometry;
-  let groups = ['default'];
-  let material = 'default';
-  let object = 'default';
+	const materialLibs = [];
+	const geometries = [];
+	let geometry;
+	let groups = ['default'];
+	let material = 'default';
+	let object = 'default';
 
-  const noop = () => {};
+	const noop = () => {};
 
-  function newGeometry() {
-    if (geometry && geometry.data.position.length) {
-      geometry = undefined;
-    }
-  }
+	function newGeometry() {
+		if (geometry && geometry.data.position.length) {
+			geometry = undefined;
+		}
+	}
 
-  function setGeometry() {
-    if (!geometry) {
-      const position = [];
-      const texcoord = [];
-      const normal = [];
-      webglVertexData = [
-        position,
-        texcoord,
-        normal,
-      ];
-      geometry = {
-        object,
-        groups,
-        material,
-        data: {
-          position,
-          texcoord,
-          normal,
-        },
-      };
-      geometries.push(geometry);
-    }
-  }
+	function setGeometry() {
+		if (!geometry) {
+			const position = [];
+			const texcoord = [];
+			const normal = [];
+			webglVertexData = [
+				position,
+				texcoord,
+				normal,
+			];
+			geometry = {
+				object,
+				groups,
+				material,
+				data: {
+					position,
+					texcoord,
+					normal,
+				},
+			};
+			geometries.push(geometry);
+		}
+	}
 
-  function addVertex(vert) {
-    const ptn = vert.split('/');
-    ptn.forEach((objIndexStr, i) => {
-      if (!objIndexStr) {
-        return;
-      }
-      const objIndex = parseInt(objIndexStr);
-      const index = objIndex + (objIndex >= 0 ? 0 : objVertexData[i].length);
-      webglVertexData[i].push(...objVertexData[i][index]);
-    });
-  }
+	function addVertex(vert) {
+		const ptn = vert.split('/');
+		ptn.forEach((objIndexStr, i) => {
+			if (!objIndexStr) {
+				return;
+			}
+			const objIndex = parseInt(objIndexStr);
+			const index = objIndex + (objIndex >= 0 ? 0 : objVertexData[i].length);
+			webglVertexData[i].push(...objVertexData[i][index]);
+		});
+	}
 
-  const keywords = {
-    v(parts) {
-      objPositions.push(parts.map(parseFloat));
-    },
-    vn(parts) {
-      objNormals.push(parts.map(parseFloat));
-    },
-    vt(parts) {
-      objTexcoords.push(parts.map(parseFloat));
-    },
-    f(parts) {
-      setGeometry();
-      const numTriangles = parts.length - 2;
-      for (let tri = 0; tri < numTriangles; ++tri) {
-        addVertex(parts[0]);
-        addVertex(parts[tri + 1]);
-        addVertex(parts[tri + 2]);
-      }
-    },
-    s: noop,    // smoothing group
-    mtllib(parts, unparsedArgs) {
-      materialLibs.push(unparsedArgs);
-    },
-    usemtl(parts, unparsedArgs) {
-      material = unparsedArgs;
-      newGeometry();
-    },
-    g(parts) {
-      groups = parts;
-      newGeometry();
-    },
-    o(parts, unparsedArgs) {
-      object = unparsedArgs;
-      newGeometry();
-    },
-  };
+	const keywords = {
+		v(parts) {
+			objPositions.push(parts.map(parseFloat));
+		},
+		vn(parts) {
+			objNormals.push(parts.map(parseFloat));
+		},
+		vt(parts) {
+			objTexcoords.push(parts.map(parseFloat));
+		},
+		f(parts) {
+			setGeometry();
+			const numTriangles = parts.length - 2;
+			for (let tri = 0; tri < numTriangles; ++tri) {
+				addVertex(parts[0]);
+				addVertex(parts[tri + 1]);
+				addVertex(parts[tri + 2]);
+			}
+		},
+		s: noop,    // smoothing group
+		mtllib(parts, unparsedArgs) {
+			materialLibs.push(unparsedArgs);
+		},
+		usemtl(parts, unparsedArgs) {
+			material = unparsedArgs;
+			newGeometry();
+		},
+		g(parts) {
+			groups = parts;
+			newGeometry();
+		},
+		o(parts, unparsedArgs) {
+			object = unparsedArgs;
+			newGeometry();
+		},
+	};
 
-  const keywordRE = /(\w*)(?: )*(.*)/;
-  const lines = text.split('\n');
-  for (let lineNo = 0; lineNo < lines.length; ++lineNo) {
-    const line = lines[lineNo].trim();
-    if (line === '' || line.startsWith('#')) {
-      continue;
-    }
-    const m = keywordRE.exec(line);
-    if (!m) {
-      continue;
-    }
-    const [, keyword, unparsedArgs] = m;
-    const parts = line.split(/\s+/).slice(1);
-    const handler = keywords[keyword];
-    if (!handler) {
-      console.warn('unhandled keyword:', keyword);  // eslint-disable-line no-console
-      continue;
-    }
-    handler(parts, unparsedArgs);
-  }
+	const keywordRE = /(\w*)(?: )*(.*)/;
+	const lines = text.split('\n');
+	for (let lineNo = 0; lineNo < lines.length; ++lineNo) {
+		const line = lines[lineNo].trim();
+		if (line === '' || line.startsWith('#')) {
+			continue;
+		}
+		const m = keywordRE.exec(line);
+		if (!m) {
+			continue;
+		}
+		const [, keyword, unparsedArgs] = m;
+		const parts = line.split(/\s+/).slice(1);
+		const handler = keywords[keyword];
+		if (!handler) {
+			console.warn('unhandled keyword:', keyword);  // eslint-disable-line no-console
+			continue;
+		}
+		handler(parts, unparsedArgs);
+	}
 
-  for (const geometry of geometries) {
-    geometry.data = Object.fromEntries(
-        Object.entries(geometry.data).filter(([, array]) => array.length > 0));
-  }
+	for (const geometry of geometries) {
+		geometry.data = Object.fromEntries(
+			Object.entries(geometry.data).filter(([, array]) => array.length > 0));
+	}
 
-  return {
-    geometries,
-    materialLibs,
-  };
+	return {
+		geometries,
+		materialLibs,
+	};
 }
 
 //Extra math functions. This can not be used in shader program. GLSL has its own math functions.
@@ -962,7 +971,7 @@ class Billboard{
 		this.img=img;
 		this.ambient=ambient;
 	}
-	
+
 	setBuffers(positionBuffer,textureBuffer,normalBuffer,billboardTextureBuffer){
 		this.positionBuffer=positionBuffer;
 		this.textureBuffer=textureBuffer;
@@ -1032,7 +1041,7 @@ function parseScene(file_data)//A simple function to read JSON and put the data 
 		let upperRight=new Vector3(sceneFile.billboard.UpperRight[0],sceneFile.billboard.UpperRight[1],sceneFile.billboard.UpperRight[2]);
 		let billboardHeight=upperLeft.y-lowerLeft.y;
 		let lowerRight=new Vector3(upperRight.x,upperRight.y-billboardHeight,upperRight.z);
-		
+
 		billboard=new Billboard(upperLeft,lowerLeft,upperRight,lowerRight,sceneFile.billboard.filename,null,null);//Image is assigned to billboard later
 	}
 	var mirror=null;

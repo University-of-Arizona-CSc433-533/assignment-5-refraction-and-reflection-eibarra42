@@ -25,9 +25,12 @@ Select one texture, 6 cubemap textures, and one scene.
   <input type="range" id="whID" name="pexp"
          value="0.5" min="0.01" max="2.0" step="0.01" style="width:100%" >
   <p align="center">Water height: <span id="whLabelID"></span></p>
-    <input type="range" id="rrID" name="pexp"
-           value="0.5" min="0.0" max="1.0" step="0.01" style="width:100%" >
-    <p align="center">Refraction/Reflectance (rr): <span id="rrLabelID"></span></p>
+  <input type="range" id="lambdaID" name="pexp"
+         value="10.0" min="1.0" max="20.0" step="0.1" style="width:100%" >
+  <p align="center">Wavelength (lambda): <span id="lambdaLabelID"></span></p>
+  <input type="range" id="rrID" name="pexp"
+         value="0.5" min="0.0" max="1.0" step="0.01" style="width:100%" >
+  <p align="center">Refraction/Reflectance (rr): <span id="rrLabelID"></span></p>
   </p>
 </div>
 
